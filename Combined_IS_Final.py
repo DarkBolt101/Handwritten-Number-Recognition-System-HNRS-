@@ -7,7 +7,7 @@ from skimage.morphology import skeletonize
 # Configuration #
 #################################
 IMAGE_PATH = 'numbers.png'
-METHOD = 'canny_edges' # Each Method: 'threshold','kmeans','local_threshold','canny_edges'
+METHOD = 'local_threshold' # Each Method: 'threshold','kmeans','local_threshold','canny_edges'
 SHOW_BBOXES = True # Whether to draw bounding boxes around detected digits
 MIN_COMPONENT_AREA = 30 # The minimum pixel area for a component to be considered a digit
 ENABLE_TOUCHING_SPLIT = True # Whether to try splitting connected digits
