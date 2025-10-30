@@ -4,6 +4,9 @@ import pandas as pd
 import joblib
 from typing import Tuple
 
+# ============================================
+# Existing MNIST model code (unchanged)
+# ============================================
 
 def _load_xy_from_csv(train_csv, test_csv):
     train_df = pd.read_csv(train_csv, header=None)
@@ -101,7 +104,6 @@ def train_rf(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_normal
     )
     
     print("Starting RF Training...")
-    
     rf.fit(x_train, y_train)
     
     print("Evaluating RF...")
@@ -140,7 +142,6 @@ def train_svm(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_norma
     x_test_s = scaler.transform(x_test)
     
     print("Starting SVM Training...")
-    
     svm = SVC(kernel='rbf', C=1.0, gamma='scale', random_state=42, probability=True, verbose=False)
     svm.fit(x_train_s, y_train)
     
@@ -159,9 +160,106 @@ def train_svm(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_norma
     print(f"   Saved to: {model_out} and scaler to: {scaler_out}\n")
 
 
+# ============================================
+# NEW: TrOCR handwriting model (added)
+# ============================================
+def train_handwriting():
+    import torch
+    from datasets import load_dataset
+    from transformers import TrOCRProcessor, VisionEncoderDecoderModel, Seq2SeqTrainer, Seq2SeqTrainingArguments
+    import evaluate
+    import matplotlib.pyplot as plt
+
+    print("\nTraining TrOCR Handwriting Recognition Model...")
+
+    dataset = load_dataset("Teklia/IAM-line")
+    train_dataset = dataset["train"].select(range(1000))
+    eval_dataset = dataset["test"].select(range(200))
+
+    model_name = "microsoft/trocr-small-handwritten"
+    processor = TrOCRProcessor.from_pretrained(model_name)
+    model = VisionEncoderDecoderModel.from_pretrained(model_name)
+
+    for param in model.encoder.parameters():
+        param.requires_grad = False
+
+    model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
+    model.config.pad_token_id = processor.tokenizer.pad_token_id
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+
+    def preprocess(batch):
+        images = [img.convert("RGB") for img in batch["image"]]
+        pixel_values = processor(images=images, return_tensors="pt", padding=True).pixel_values
+        labels = processor.tokenizer(batch["text"], padding="max_length", truncation=True, max_length=128).input_ids
+        batch["pixel_values"] = pixel_values
+        batch["labels"] = labels
+        return batch
+
+    print("Preprocessing data...")
+    train_dataset = train_dataset.map(preprocess, batched=True, remove_columns=train_dataset.column_names)
+    eval_dataset = eval_dataset.map(preprocess, batched=True, remove_columns=eval_dataset.column_names)
+
+    wer_metric = evaluate.load("wer")
+
+    def compute_metrics(pred):
+        pred_ids = pred.predictions
+        label_ids = pred.label_ids
+        pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
+        label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
+        wer = wer_metric.compute(predictions=pred_str, references=label_str)
+        return {"wer": wer}
+
+    training_args = Seq2SeqTrainingArguments(
+        output_dir="./handwriting_model",
+        per_device_train_batch_size=2,
+        per_device_eval_batch_size=2,
+        predict_with_generate=True,
+        logging_steps=50,
+        save_total_limit=2,
+        num_train_epochs=3,
+        learning_rate=3e-5,
+        evaluation_strategy="epoch",
+        fp16=False,
+    )
+
+    trainer = Seq2SeqTrainer(
+        model=model,
+        tokenizer=processor.feature_extractor,
+        args=training_args,
+        compute_metrics=compute_metrics,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+    )
+
+    print("Starting fine-tuning...")
+    trainer.train()
+    print("Fine-tuning complete!")
+
+    trainer.save_model("./handwriting_model")
+    processor.save_pretrained("./handwriting_model")
+
+    print("Testing inference on first 5 test images...")
+    test_samples = dataset["test"].select(range(5))
+    for sample in test_samples:
+        image = sample["image"].convert("RGB")
+        gt = sample["text"]
+        pixel_values = processor(images=image, return_tensors="pt").pixel_values.to(device)
+        generated_ids = model.generate(pixel_values, max_new_tokens=128)
+        pred_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        plt.imshow(image)
+        plt.axis("off")
+        plt.title(f"Predicted: {pred_text}\nGround truth: {gt}")
+        plt.show()
+
+
+# ============================================
+# Extended main() to include handwriting model
+# ============================================
 def main():
-    parser = argparse.ArgumentParser(description="Train models on MNIST dataset")
-    parser.add_argument("model", choices=["cnn", "rf", "svm", "all"])
+    parser = argparse.ArgumentParser(description="Train models on MNIST or handwriting datasets")
+    parser.add_argument("model", choices=["cnn", "rf", "svm", "all", "handwriting"])
     parser.add_argument("--train_csv", default="mnist_train_normalized.csv")
     parser.add_argument("--test_csv", default="mnist_test_normalized.csv")
     parser.add_argument("--out", default=None)
@@ -173,6 +271,8 @@ def main():
         train_rf(args.train_csv, args.test_csv, model_out=args.out or "mnist_rf_model.joblib")
     elif args.model == "svm":
         train_svm(args.train_csv, args.test_csv, model_out=args.out or "mnist_svm_model.joblib")
+    elif args.model == "handwriting":
+        train_handwriting()
     else:
         print("Training all models...")
         train_cnn(args.train_csv, args.test_csv, "mnist_cnn_model.keras")
