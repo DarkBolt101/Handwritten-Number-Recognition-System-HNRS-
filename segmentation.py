@@ -28,6 +28,8 @@ def segment_image_combined(gray_image, method="auto"):
         return _segment_local_threshold(gray_image)
     elif method == "canny_edges":
         return _segment_canny_edges(gray_image)
+    elif method == "polygonal":
+        return _segment_polygonal(gray_image)
     else:
         raise ValueError(f"Unknown segmentation method: {method}")
 
@@ -65,6 +67,24 @@ def _segment_canny_edges(gray_image):
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel, iterations=2)
+    return _ensure_white_foreground(mask, gray_image)
+
+
+def _segment_polygonal(gray_image):
+    """Polygonal contour-based segmentation."""
+    blur = cv2.GaussianBlur(gray_image, (3, 3), 0)
+    edges = cv2.Canny(blur, 80, 160)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    mask = np.zeros_like(gray_image, dtype=np.uint8)
+    
+    # Step 5: Approximate contours with polygons and fill them in
+    for cnt in contours:
+        if cv2.contourArea(cnt) < 30:
+            continue  # ignore small noise
+        epsilon = 0.01 * cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, epsilon, True)
+        cv2.drawContours(mask, [approx], -1, 255, -1)
+    
     return _ensure_white_foreground(mask, gray_image)
 
 def _ensure_white_foreground(mask, gray_image):

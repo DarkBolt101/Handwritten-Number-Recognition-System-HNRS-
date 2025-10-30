@@ -129,6 +129,19 @@ def extract_digits_combined(mask, gray_image,
     Returns:
         Tuple of (digit_chips, visualization_image)
     """
+    # Apply selected segmentation
+    try:
+        mask = segment_image_combined(gray_image, method=segmentation_method)
+        if mask is None or mask.size == 0:
+            print("Segmentation failed — empty mask returned.")
+            return [], cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+    except Exception as e:
+        print(f"Segmentation error: {e}")
+        return [], cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
+
+    # Track segmentation method
+    track_segmentation_method(segmentation_method)
+
     # Apply pre-erosion if enabled
     if enable_pre_erosion:
         mask = cv2.erode(mask, np.ones((2, 2), np.uint8))
@@ -163,9 +176,6 @@ def extract_digits_combined(mask, gray_image,
             track_splitting_method(f"Natural separation ({len(all_contours)} digits)")
     else:
         track_splitting_method("None (single digit)")
-    
-    # Track segmentation method
-    track_segmentation_method(segmentation_method)
     
     vis = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
     chips, boxes = [], []

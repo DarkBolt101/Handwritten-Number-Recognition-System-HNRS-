@@ -126,7 +126,7 @@ class DigitRecognitionGUI(tk.Tk):
         # Segmentation method
         ttk.Label(settings_frame, text="Segmentation:").grid(row=1, column=0, sticky=tk.W, pady=2)
         seg_combo = ttk.Combobox(settings_frame, textvariable=self.method_var,
-                                values=["auto", "otsu", "adaptive", "kmeans", "local_threshold", "canny_edges"],
+                                values=["auto", "otsu", "adaptive", "kmeans", "local_threshold", "canny_edges", "polygonal"],
                                 state="readonly", width=15)
         seg_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
         

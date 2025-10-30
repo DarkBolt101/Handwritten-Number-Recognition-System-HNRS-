@@ -5,6 +5,11 @@ Machine Learning Models Module
 import numpy as np
 import joblib
 from tensorflow.keras.models import load_model
+import os 
+
+# set base directory to import trained models from 
+
+base_dir = os.path.join(os.path.dirname(__file__), "trained_models")
 
 # =============================================================================
 # MODEL MANAGER CLASS
@@ -24,15 +29,15 @@ class ModelManager:
     def _load_models(self):
         """Load all machine learning models."""
         try:
-            self.cnn_model = load_model('mnist_cnn_model.keras')
+            self.cnn_model = load_model(os.path.join(base_dir, "mnist_cnn_model.keras"))
             print("CNN model loaded successfully")
         except Exception as e:
             print(f"Failed to load CNN model: {e}")
             self.cnn_model = None
         
         try:
-            self.svm_model = joblib.load('mnist_svm_model.joblib')
-            self.svm_scaler = joblib.load('mnist_svm_scaler.joblib')
+            self.svm_model = joblib.load(os.path.join(base_dir, "mnist_svm_model.joblib"))
+            self.svm_scaler = joblib.load(os.path.join(base_dir, "mnist_svm_scaler.joblib"))
             print("SVM model and scaler loaded successfully")
         except Exception as e:
             print(f"Failed to load SVM model: {e}")
@@ -40,7 +45,7 @@ class ModelManager:
             self.svm_scaler = None
         
         try:
-            self.rf_model = joblib.load('mnist_rf_model.joblib')
+            self.rf_model = joblib.load(os.path.join(base_dir, "mnist_rf_model.joblib"))            
             print("RF model loaded successfully")
         except Exception as e:
             print(f"Failed to load RF model: {e}")
