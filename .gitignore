@@ -1,1 +1,4 @@
 toran-segmentation/env/
+__pycache__/
+env/
+trained_models/
