@@ -220,9 +220,12 @@ def train_handwriting():
         save_total_limit=2,
         num_train_epochs=3,
         learning_rate=3e-5,
-        evaluation_strategy="epoch",
         fp16=False,
     )
+
+    # For older versions of Transformers (cause I can't upgrade right now):
+    # explicitly turn on evaluation at each epoch
+    training_args.do_eval = True
 
     trainer = Seq2SeqTrainer(
         model=model,
