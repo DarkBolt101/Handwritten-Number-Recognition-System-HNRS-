@@ -66,9 +66,9 @@ def train_cnn(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_norma
     
     print("Evaluating CNN...")
     preds = model.predict(x_test)
-    test_acc = accuracy_score(y_test_raw, np.argmax(preds, axis=1))     # Get accuracy
-    confidence = np.max(preds, axis=1)                                  # Get max probability for each sample
-    avg_confidence = np.mean(confidence)                                # Get average confidence
+    test_acc = accuracy_score(y_test_raw, np.argmax(preds, axis=1))
+    confidence = np.max(preds, axis=1)
+    avg_confidence = np.mean(confidence)
     model.save(model_out)
     
     print("CNN Training Complete!")
@@ -108,10 +108,10 @@ def train_rf(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_normal
     
     print("Evaluating RF...")
     preds = rf.predict(x_test)
-    acc = accuracy_score(y_test, preds)     # Get accuracy
-    proba = rf.predict_proba(x_test)        # Get probability for each sample
-    confidence = np.max(proba, axis=1)      # Get max probability for each sample
-    avg_confidence = np.mean(confidence)    # Get average confidence
+    acc = accuracy_score(y_test, preds)
+    proba = rf.predict_proba(x_test)
+    confidence = np.max(proba, axis=1)
+    avg_confidence = np.mean(confidence)
     joblib.dump(rf, model_out)
     
     print("RF Training Complete!")
@@ -147,10 +147,10 @@ def train_svm(train_csv="mnist_train_normalized.csv", test_csv="mnist_test_norma
     
     print("Evaluating SVM...")
     preds = svm.predict(x_test_s)
-    acc = accuracy_score(y_test, preds)     # Get accuracy
-    proba = svm.predict_proba(x_test_s)     # Get probability for each sample
-    confidence = np.max(proba, axis=1)      # Get max probability for each sample
-    avg_confidence = np.mean(confidence)    # Get average confidence
+    acc = accuracy_score(y_test, preds)
+    proba = svm.predict_proba(x_test_s)
+    confidence = np.max(proba, axis=1)
+    avg_confidence = np.mean(confidence)
     joblib.dump(svm, model_out)
     joblib.dump(scaler, scaler_out)
     
@@ -220,12 +220,9 @@ def train_handwriting():
         save_total_limit=2,
         num_train_epochs=3,
         learning_rate=3e-5,
+        evaluation_strategy="epoch",
         fp16=False,
     )
-
-    # For older versions of Transformers (cause I can't upgrade right now):
-    # explicitly turn on evaluation at each epoch
-    training_args.do_eval = True
 
     trainer = Seq2SeqTrainer(
         model=model,
@@ -281,7 +278,7 @@ def main():
         train_cnn(args.train_csv, args.test_csv, "mnist_cnn_model.keras")
         train_rf(args.train_csv, args.test_csv, "mnist_rf_model.joblib")
         train_svm(args.train_csv, args.test_csv, "mnist_svm_model.joblib")
-        print("All models trained successfully!")
+        print("All MNIST models trained successfully!")
 
 
 if __name__ == "__main__":

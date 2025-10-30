@@ -8,6 +8,17 @@ import numpy as np
 import cv2
 from PIL import Image, ImageTk, ImageDraw
 import threading
+import os
+
+# ===================== ADDED IMPORTS FOR HANDWRITING MODEL =====================
+try:
+    import torch
+    from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+except Exception:
+    torch = None
+    TrOCRProcessor = None
+    VisionEncoderDecoderModel = None
+# ==============================================================================
 
 from segmentation import segment_image_combined
 from digit_extraction import extract_digits_combined, create_chips_display, get_last_segmentation_method
@@ -69,6 +80,12 @@ class DigitRecognitionGUI(tk.Tk):
         self.last_model_used = "Unknown"
         self.last_segmentation_used = "Unknown"
         self.last_splitting_method_used = "None"
+
+        # ===================== ADDED HANDWRITING MODEL VARS =====================
+        self._trocr_model = None
+        self._trocr_processor = None
+        self._trocr_device = None
+        # =======================================================================
     
     def _setup_ui(self):
         """Set up the user interface."""
@@ -117,27 +134,26 @@ class DigitRecognitionGUI(tk.Tk):
         settings_frame = ttk.LabelFrame(parent, text="Settings", padding="10")
         settings_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        # Model selection
+        # ===================== CHANGED: Added handwriting model option =====================
         ttk.Label(settings_frame, text="Model:").grid(row=0, column=0, sticky=tk.W, pady=2)
         model_combo = ttk.Combobox(settings_frame, textvariable=self.model_var, 
-                                  values=["auto", "cnn", "svm", "rf"], state="readonly", width=15)
+                                  values=["auto", "cnn", "svm", "rf", "handwriting"],  # Added handwriting
+                                  state="readonly", width=15)
         model_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
+        # ====================================================================================
         
-        # Segmentation method
         ttk.Label(settings_frame, text="Segmentation:").grid(row=1, column=0, sticky=tk.W, pady=2)
         seg_combo = ttk.Combobox(settings_frame, textvariable=self.method_var,
                                 values=["auto", "otsu", "adaptive", "kmeans", "local_threshold", "canny_edges", "polygonal"],
                                 state="readonly", width=15)
         seg_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
         
-        # Split method
         ttk.Label(settings_frame, text="Split Method:").grid(row=2, column=0, sticky=tk.W, pady=2)
         split_combo = ttk.Combobox(settings_frame, textvariable=self.split_method_var,
                                   values=["auto", "simple", "projection", "kmeans1d", "skeleton"],
                                   state="readonly", width=15)
         split_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2, padx=(5, 0))
         
-        # Confidence threshold
         ttk.Label(settings_frame, text="Confidence Threshold:").grid(row=3, column=0, sticky=tk.W, pady=2)
         conf_scale = ttk.Scale(settings_frame, from_=0.0, to=1.0, variable=self.confidence_threshold,
                               orient=tk.HORIZONTAL, length=150)
@@ -146,7 +162,6 @@ class DigitRecognitionGUI(tk.Tk):
         self.conf_label.grid(row=3, column=2, sticky=tk.W, pady=2, padx=(5, 0))
         conf_scale.configure(command=self._update_conf_label)
         
-        # Foreground threshold
         ttk.Label(settings_frame, text="Foreground Threshold:").grid(row=4, column=0, sticky=tk.W, pady=2)
         fg_scale = ttk.Scale(settings_frame, from_=0.0, to=1.0, variable=self.foreground_threshold,
                             orient=tk.HORIZONTAL, length=150)
@@ -299,7 +314,48 @@ class DigitRecognitionGUI(tk.Tk):
     def _stop_draw(self, event):
         """Stop drawing."""
         self.last_xy = None
-    
+
+    # =========================================================================
+    # HANDWRITING MODEL FUNCTIONS (ADDED)
+    # =========================================================================
+    def _ensure_trocr_loaded(self):
+        if self._trocr_model and self._trocr_processor:
+            return True
+        if TrOCRProcessor is None:
+            print("Transformers not installed. Please install `transformers` and `torch`.")
+            return False
+        try:
+            if os.path.exists("./handwriting_model"):
+                print("Loading local handwriting model...")
+                self._trocr_processor = TrOCRProcessor.from_pretrained("./handwriting_model")
+                self._trocr_model = VisionEncoderDecoderModel.from_pretrained("./handwriting_model")
+            else:
+                print("Using fallback model: microsoft/trocr-small-handwritten")
+                self._trocr_processor = TrOCRProcessor.from_pretrained("microsoft/trocr-small-handwritten")
+                self._trocr_model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-small-handwritten")
+            self._trocr_device = "cuda" if torch and torch.cuda.is_available() else "cpu"
+            if torch:
+                self._trocr_model.to(self._trocr_device)
+            return True
+        except Exception as e:
+            print(f"Failed to load handwriting model: {e}")
+            return False
+
+    def _predict_handwriting(self, gray_image):
+        if not self._ensure_trocr_loaded():
+            return "[Error loading handwriting model]"
+        try:
+            rgb = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2RGB)
+            pil_img = Image.fromarray(rgb)
+            inputs = self._trocr_processor(images=pil_img, return_tensors="pt").pixel_values
+            if torch:
+                inputs = inputs.to(self._trocr_device)
+            outputs = self._trocr_model.generate(inputs, max_new_tokens=128)
+            text = self._trocr_processor.batch_decode(outputs, skip_special_tokens=True)[0]
+            return text.strip()
+        except Exception as e:
+            return f"[Error: {e}]"
+
     # =========================================================================
     # IMAGE PROCESSING FUNCTIONS
     # =========================================================================
@@ -348,6 +404,22 @@ class DigitRecognitionGUI(tk.Tk):
     def _process_image(self):
         """Process current image."""
         try:
+            # ===================== HANDWRITING MODE HANDLER =====================
+            if self.model_var.get() == "handwriting":
+                print("Running handwriting recognition...")
+                gray = self.current_gray if self.current_gray is not None else np.array(self.draw_img)
+                text = self._predict_handwriting(gray)
+                self.after(0, lambda: self.results_text.delete(1.0, tk.END))
+                self.after(0, lambda: self.results_text.insert(tk.END, f"Detected Handwriting:\n\n{text}\n"))
+                self.total_processed += 1
+                if text and not text.startswith("[Error"):
+                    self.successful_detections += 1
+                self.after(0, self._update_statistics)
+                self.after(0, self._enable_drawing)
+                self.is_processing = False
+                return
+            # ====================================================================
+
             self.last_segmentation_used = "Unknown"
             
             if self.current_gray is None:
@@ -542,6 +614,7 @@ Instructions:
         """Start automatic statistics updates."""
         self._update_statistics()
         self.after(5000, self._start_auto_update)
+
 
 if __name__ == "__main__":
     app = DigitRecognitionGUI()
